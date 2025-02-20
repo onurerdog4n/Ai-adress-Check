@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adres Doğrulama</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            min-height: 100px;
+            margin-bottom: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        textarea:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            display: none;
+            background-color: white;
+        }
+        .alert.show {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .alert-warning {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+            color: #856404;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .confirmation-buttons {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .confirmation-buttons button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            flex: 1;
+        }
+        .confirmation-buttons button:hover {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d !important;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62 !important;
+        }
+        .loading {
+            display: none;
+            color: #666;
+            font-style: italic;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .loading.show {
+            display: block;
+        }
+        .result-details {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: rgba(255,255,255,0.5);
+            border-radius: 4px;
+        }
+        .result-item {
+            margin: 5px 0;
+            font-size: 15px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        label {
+            font-weight: bold;
+            color: #555;
+            display: block;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Adres Doğrulama Sistemi</h1>
+    
+    <div class="form-group">
+        <label for="addressInput">Adresinizi Girin:</label>
+        <textarea 
+            id="addressInput" 
+            placeholder="Örnek: Atatürk Caddesi No: 15 Daire: 3"
+        ></textarea>
+        <div id="loading" class="loading">Adres kontrol ediliyor...</div>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        let timeout = null;
+
+        async function checkAddressWithAI(address) {
+            try {
+                const response = await fetch('apiAi.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        address: address
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('API isteği başarısız oldu');
+                }
+
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Hata:', error);
+                throw error;
+            }
+        }
+
+        function showResult(result, originalAddress) {
+            const resultDiv = document.getElementById('result');
+            let missingInfo = [];
+            let foundInfo = [];
+
+            // Bina numarası kontrolü
+            if (!result.hasBuildingNumber) {
+                missingInfo.push('bina numarası');
+            } else {
+                foundInfo.push(`Bina No: ${result.buildingNumber}`);
+            }
+
+            // Daire numarası kontrolü
+            if (!result.hasFlatNumber) {
+                missingInfo.push('daire numarası');
+            } else {
+                foundInfo.push(`Daire No: ${result.flatNumber}`);
+            }
+
+            if (missingInfo.length > 0) {
+                const missingText = missingInfo.join(' ve ');
+                resultDiv.innerHTML = `
+                    <div class="alert alert-warning show">
+                        <div>Adresinizde ${missingText} bilgisinin eksik olduğunu fark ettik.</div>
+                        ${foundInfo.length > 0 ? `
+                            <div class="result-details">
+                                <div>Tespit edilen bilgiler:</div>
+                                ${foundInfo.map(info => `<div class="result-item">✓ ${info}</div>`).join('')}
+                            </div>
+                        ` : ''}
+                        <div class="confirmation-buttons">
+                            <button onclick="confirmAddress('${originalAddress.replace(/'/g, "\\'")}')">
+                                Adresim doğru, onaylıyorum
+                            </button>
+                            <button class="btn-secondary" onclick="editAddress()">
+                                Adresi düzeltmek istiyorum
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success show">
+                        <div>Adresiniz başarıyla doğrulandı.</div>
+                        <div class="result-details">
+                            ${foundInfo.map(info => `<div class="result-item">✓ ${info}</div>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function showError(error) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+                <div class="alert alert-error show">
+                    <div>Hata oluştu: ${error.message}</div>
+                </div>
+            `;
+        }
+
+        function confirmAddress(address) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+                <div class="alert alert-success show">
+                    <div>Adresiniz onaylandı:</div>
+                    <div class="result-details">
+                        <div class="result-item">${address}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function editAddress() {
+            const addressInput = document.getElementById('addressInput');
+            addressInput.focus();
+            document.getElementById('result').innerHTML = `
+                <div class="alert alert-warning show">
+                    Lütfen adresinizi düzenleyin.
+                </div>
+            `;
+        }
+
+        document.getElementById('addressInput').addEventListener('input', function(e) {
+            const loading = document.getElementById('loading');
+            const addressText = e.target.value.trim();
+            
+            if (timeout) {
+                clearTimeout(timeout);
+            }
+
+            if (!addressText) {
+                document.getElementById('result').innerHTML = '';
+                loading.classList.remove('show');
+                return;
+            }
+
+            loading.classList.add('show');
+
+            timeout = setTimeout(async () => {
+                try {
+                    const result = await checkAddressWithAI(addressText);
+                    showResult(result, addressText);
+                } catch (error) {
+                    showError(error);
+                } finally {
+                    loading.classList.remove('show');
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
